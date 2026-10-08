@@ -1,0 +1,111 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Public profile of users and developers",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "bio": { "type": "string" },
+        "website": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "isDeveloper": { "type": "boolean" }
+      },
+      "required": ["uid", "displayName"]
+    },
+    "UserPrivate": {
+      "title": "UserPrivate",
+      "description": "Private user information including email",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "notificationEnabled": { "type": "boolean" },
+        "theme": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["uid", "email"]
+    },
+    "App": {
+      "title": "App",
+      "description": "Android APK and game listing",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "shortDescription": { "type": "string" },
+        "fullDescription": { "type": "string" },
+        "version": { "type": "string" },
+        "packageName": { "type": "string" },
+        "iconUrl": { "type": "string" },
+        "screenshots": { "type": "array" },
+        "apkUrl": { "type": "string" },
+        "apkSize": { "type": "number" },
+        "downloads": { "type": "number" },
+        "rating": { "type": "number" },
+        "reviewCount": { "type": "number" },
+        "uploaderId": { "type": "string" },
+        "uploaderName": { "type": "string" },
+        "status": { "type": "string" },
+        "youtubeTrailerUrl": { "type": "string" },
+        "tags": { "type": "array" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["name", "category", "packageName", "apkUrl", "uploaderId", "status"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "User rating and text review for an app",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userPhoto": { "type": "string" },
+        "rating": { "type": "number" },
+        "comment": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["userId", "rating", "comment"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "Moderation reports",
+      "type": "object",
+      "properties": {
+        "appId": { "type": "string" },
+        "appName": { "type": "string" },
+        "reporterId": { "type": "string" },
+        "reason": { "type": "string" },
+        "details": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["appId", "reporterId", "reason", "details"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Public profiles of users"
+    },
+    "/users_private/{userId}": {
+      "schema": "UserPrivate",
+      "description": "Private user information including email"
+    },
+    "/apps/{appId}": {
+      "schema": "App",
+      "description": "Android APK items catalog"
+    },
+    "/apps/{appId}/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Reviews on apps"
+    },
+    "/reports/{reportId}": {
+      "schema": "Report",
+      "description": "Moderation reports"
+    }
+  }
+}

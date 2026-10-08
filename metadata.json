@@ -1,0 +1,8 @@
+{
+  "name": "Remix DroidStore - Android APK \u0026 Game Store",
+  "description": "Discover, upload, and download top Android APKs and mobile games. Community-driven, fast, secure, and mobile-friendly app store.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
