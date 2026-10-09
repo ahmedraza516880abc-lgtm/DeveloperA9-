@@ -27,7 +27,8 @@ import {
   addOrUpdateAppReview, 
   deleteAppReview, 
   recordDownload,
-  submitReport 
+  submitReport,
+  sanitizeText 
 } from '../services/firebase';
 import { useApp } from '../context/AppContext';
 import { formatDownloads, formatSize, AppCard } from '../components/AppCard';
@@ -234,8 +235,9 @@ export const AppDetailView: React.FC = () => {
       setAuthModalOpen(true);
       return;
     }
-    if (!userComment.trim()) {
-      showToast('Please write a short review.', 'error');
+    const cleanComment = sanitizeText(userComment, 500);
+    if (!cleanComment || cleanComment.length < 3) {
+      showToast('Please write a constructive review (minimum 3 characters).', 'error');
       return;
     }
 
@@ -244,10 +246,10 @@ export const AppDetailView: React.FC = () => {
       const newReview: ReviewItem = {
         id: currentUser.uid,
         userId: currentUser.uid,
-        userName: currentUser.displayName || 'Android User',
+        userName: sanitizeText(currentUser.displayName || 'Android User', 50),
         userPhoto: currentUser.photoURL || `https://api.dicebear.com/7.x/identicon/svg?seed=${currentUser.uid}`,
-        rating: userRating,
-        comment: userComment.trim(),
+        rating: Math.max(1, Math.min(5, Number(userRating))),
+        comment: cleanComment,
         createdAt: existingUserReview ? existingUserReview.createdAt : Date.now(),
         updatedAt: Date.now()
       };
@@ -294,15 +296,21 @@ export const AppDetailView: React.FC = () => {
       return;
     }
 
+    const cleanDetails = sanitizeText(reportDetails, 500);
+    if (!cleanDetails || cleanDetails.length < 3) {
+      showToast('Please provide details for the report.', 'error');
+      return;
+    }
+
     try {
       setSubmittingReport(true);
       await submitReport({
         appId: app.id,
-        appName: app.name,
+        appName: sanitizeText(app.name, 80),
         reporterId: currentUser.uid,
         reporterEmail: currentUser.email || undefined,
         reason: reportReason,
-        details: reportDetails.trim()
+        details: cleanDetails
       });
       setReportModalOpen(false);
       setReportDetails('');

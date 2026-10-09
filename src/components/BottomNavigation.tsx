@@ -3,33 +3,33 @@ import { Home, Search, UploadCloud, Layers, User } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
 export const BottomNavigation: React.FC = () => {
-  const { currentView, navigateTo, language, currentUser, setAuthModalOpen } = useApp();
+  const { currentView, navigateTo, language, t, currentUser, setAuthModalOpen } = useApp();
 
   const navItems = [
     {
       id: 'home' as const,
-      label: language === 'hi' ? 'होम' : 'Home',
+      label: t.home,
       icon: Home
     },
     {
       id: 'search' as const,
-      label: language === 'hi' ? 'खोजें' : 'Search',
+      label: t.search,
       icon: Search
     },
     {
       id: 'upload' as const,
-      label: language === 'hi' ? 'अपलोड' : 'Upload',
+      label: t.upload,
       icon: UploadCloud,
       highlight: true
     },
     {
       id: 'my-apps' as const,
-      label: language === 'hi' ? 'मेरे ऐप्स' : 'My Apps',
+      label: t.myApps,
       icon: Layers
     },
     {
       id: 'profile' as const,
-      label: language === 'hi' ? 'प्रोफ़ाइल' : 'Profile',
+      label: t.profile,
       icon: User
     }
   ];

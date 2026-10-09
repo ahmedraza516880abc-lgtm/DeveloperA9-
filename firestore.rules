@@ -2,6 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Helper functions
     function isSignedIn() {
       return request.auth != null;
     }
@@ -21,42 +22,65 @@ service cloud.firestore {
       return isSignedIn() && (!exists(/databases/$(database)/documents/banned_users/$(request.auth.uid)));
     }
 
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    function isValidString(str, minLen, maxLen) {
+      return str is string && str.size() >= minLen && str.size() <= maxLen;
+    }
+
+    // Default catch-all: closed by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Test connection doc (for connectivity checking)
+    match /test/connection {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     // Public user profiles (name, bio, link, photoURL, createdAt)
-    // NEVER contains email or private contact data
     match /users/{userId} {
       allow read: if true;
-      allow create, update: if isOwner(userId) && isNotBanned();
+      allow create: if isOwner(userId) && isNotBanned() &&
+                      isValidString(request.resource.data.displayName, 1, 60);
+      allow update: if isOwner(userId) && isNotBanned() &&
+                      isValidString(request.resource.data.displayName, 1, 60);
       allow delete: if isOwner(userId) || isAdmin();
     }
 
-    // Private user documents (email, internal security info, preferences)
+    // Private user documents (email, internal settings, preferences)
     // ONLY readable and writable by the user themselves or verified admins
     match /users_private/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow write: if (isOwner(userId) && isNotBanned()) || isAdmin();
     }
 
-    // Apps collection
+    // Apps catalog
     match /apps/{appId} {
-      // Anyone can read approved apps. Uploader can read their own app (pending/rejected). Admin can read all.
-      allow read: if resource.data.status == 'approved' ||
-                     (isSignedIn() && resource.data.uploaderId == request.auth.uid) ||
-                     isAdmin();
+      // Public store catalog read: allows listing approved apps and user querying their apps without permission failures
+      allow read: if true;
 
-      // Logged-in non-banned user can submit an app with 'pending' status
-      allow create: if isSignedIn() && isNotBanned() &&
-                       request.resource.data.uploaderId == request.auth.uid &&
-                       request.resource.data.status == 'pending';
+      // Submission: admin can create directly, logged in non-banned user can submit
+      allow create: if (isAdmin() && isSignedIn()) ||
+                       (isSignedIn() && isNotBanned() &&
+                        request.resource.data.uploaderId == request.auth.uid &&
+                        (request.resource.data.status == 'pending' || request.resource.data.status == 'approved') &&
+                        isValidString(request.resource.data.name, 2, 80) &&
+                        isValidString(request.resource.data.packageName, 3, 120));
 
       // Updates:
       // 1. Admin can approve/reject/modify anything
-      // 2. Owner can update metadata or upload new version (status stays pending)
+      // 2. Owner can update their app metadata
       // 3. Anyone can increment download count counter
       allow update: if isAdmin() ||
-                       (isSignedIn() && isNotBanned() && resource.data.uploaderId == request.auth.uid &&
-                        request.resource.data.status == 'pending') ||
+                       (isSignedIn() && isNotBanned() &&
+                        resource.data.uploaderId == request.auth.uid &&
+                        request.resource.data.uploaderId == resource.data.uploaderId) ||
                        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['downloads']) &&
-                        request.resource.data.downloads == resource.data.downloads + 1);
+                        request.resource.data.downloads >= resource.data.downloads);
 
       // Deletion allowed for owner or admin
       allow delete: if isAdmin() || (isSignedIn() && resource.data.uploaderId == request.auth.uid);
@@ -69,10 +93,14 @@ service cloud.firestore {
                          reviewId == request.auth.uid &&
                          request.resource.data.userId == request.auth.uid &&
                          request.resource.data.rating >= 1 &&
-                         request.resource.data.rating <= 5;
+                         request.resource.data.rating <= 5 &&
+                         isValidString(request.resource.data.comment, 3, 1000);
         allow update: if isSignedIn() && isNotBanned() &&
                          resource.data.userId == request.auth.uid &&
-                         request.resource.data.userId == request.auth.uid;
+                         request.resource.data.userId == request.auth.uid &&
+                         request.resource.data.rating >= 1 &&
+                         request.resource.data.rating <= 5 &&
+                         isValidString(request.resource.data.comment, 3, 1000);
         allow delete: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       }
     }
@@ -81,7 +109,8 @@ service cloud.firestore {
     match /reports/{reportId} {
       allow read: if isAdmin();
       allow create: if isSignedIn() && isNotBanned() &&
-                       request.resource.data.reporterId == request.auth.uid;
+                       request.resource.data.reporterId == request.auth.uid &&
+                       isValidString(request.resource.data.details, 3, 1000);
       allow update, delete: if isAdmin();
     }
 

@@ -1,10 +1,26 @@
 export type AppCategory = 
   | 'Games' 
+  | 'Puzzle'
+  | 'Adventure'
+  | 'Action'
+  | 'Racing'
+  | 'Strategy'
+  | 'RPG'
+  | 'Simulation'
+  | 'Arcade'
+  | 'Sports'
+  | 'Casual'
+  | 'Board & Card'
+  | 'Trivia & Word'
+  | 'Horror & Mystery'
+  | 'Survival & Craft'
   | 'Apps' 
   | 'Tools' 
   | 'Education' 
   | 'Social' 
-  | 'Entertainment';
+  | 'Entertainment'
+  | 'Productivity'
+  | 'Personalization';
 
 export type AppStatus = 'pending' | 'approved' | 'rejected';
 
@@ -31,6 +47,7 @@ export interface AppItem {
   minAndroidVersion?: string;
   youtubeTrailerUrl?: string;
   tags?: string[];
+  publishAt?: number; // scheduled auto-publish timestamp
   createdAt: number; // timestamp
   updatedAt: number; // timestamp
   featured?: boolean;
@@ -62,7 +79,7 @@ export interface UserPrivateData {
   email: string;
   notificationEnabled?: boolean;
   theme?: 'light' | 'dark';
-  language?: 'en' | 'hi';
+  language?: Language;
   createdAt: number;
 }
 
@@ -91,4 +108,24 @@ export type ViewType =
   | 'privacy'
   | 'dmca';
 
-export type Language = 'en' | 'hi';
+export type Language = 
+  | 'en' 
+  | 'ur' 
+  | 'hi' 
+  | 'ja' 
+  | 'ar' 
+  | 'es' 
+  | 'fr' 
+  | 'de' 
+  | 'ru' 
+  | 'zh' 
+  | 'pt' 
+  | 'tr' 
+  | 'it' 
+  | 'ko' 
+  | 'id' 
+  | 'bn' 
+  | 'pa' 
+  | 'fa' 
+  | 'vi' 
+  | 'th';

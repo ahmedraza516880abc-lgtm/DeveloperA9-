@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Sparkles, TrendingUp, Clock, Award, DownloadCloud, ChevronRight, Layers } from 'lucide-react';
+import { Sparkles, TrendingUp, Clock, Award, DownloadCloud, ChevronRight, Layers, UploadCloud } from 'lucide-react';
 import { AppItem, AppCategory } from '../types';
 import { getApprovedApps } from '../services/firebase';
 import { BannerSlider } from '../components/BannerSlider';
@@ -86,8 +86,34 @@ export const HomeView: React.FC = () => {
         </section>
       ) : (
         <>
-          {/* Featured carousel */}
-          <BannerSlider apps={apps} />
+          {/* Featured carousel if apps exist */}
+          {apps.length > 0 && <BannerSlider apps={apps} />}
+
+          {/* Empty store state if no apps approved yet */}
+          {apps.length === 0 && (
+            <div className="py-16 px-6 text-center rounded-3xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 shadow-sm max-w-lg mx-auto my-8 space-y-4">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center">
+                <Sparkles className="w-8 h-8" />
+              </div>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                {language === 'hi' ? 'ड्रॉइडस्टोर में आपका स्वागत है!' : 'Welcome to DroidStore!'}
+              </h2>
+              <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                {language === 'hi' 
+                  ? 'अभी तक कोई ऐप या गेम प्रकाशित नहीं हुआ है। पहले डेवलपर बनें और अपना APK अपलोड करें!' 
+                  : 'No apps or games are live on the store yet. Upload your APK or Android game to get started!'}
+              </p>
+              <div>
+                <button
+                  onClick={() => navigateTo('upload')}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs sm:text-sm shadow-md transition"
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  <span>{language === 'hi' ? 'पहला APK अपलोड करें' : 'Upload First APK'}</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Section: Trending Games */}
           {trendingGames.length > 0 && (
@@ -123,7 +149,7 @@ export const HomeView: React.FC = () => {
             </section>
           )}
 
-          {/* Section: Most Downloaded (Horizontal layout showcase) */}
+          {/* Section: Most Downloaded */}
           {mostDownloaded.length > 0 && (
             <section className="space-y-3.5">
               <div className="flex items-center justify-between">

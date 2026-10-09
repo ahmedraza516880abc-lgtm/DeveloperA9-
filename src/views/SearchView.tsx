@@ -37,6 +37,7 @@ export const SearchView: React.FC = () => {
         app.uploaderName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         app.shortDescription.toLowerCase().includes(searchQuery.toLowerCase()) ||
         app.packageName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (app.fullDescription && app.fullDescription.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (app.tags && app.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase())));
 
       const matchesCategory = !selectedCategory || app.category === selectedCategory;

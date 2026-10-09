@@ -84,6 +84,15 @@
         "createdAt": { "type": "number" }
       },
       "required": ["appId", "reporterId", "reason", "details"]
+    },
+    "BannedUser": {
+      "title": "BannedUser",
+      "description": "Moderated/banned users list",
+      "type": "object",
+      "properties": {
+        "bannedAt": { "type": "number" },
+        "bannedBy": { "type": "string" }
+      }
     }
   },
   "firestore": {
@@ -106,6 +115,10 @@
     "/reports/{reportId}": {
       "schema": "Report",
       "description": "Moderation reports"
+    },
+    "/banned_users/{userId}": {
+      "schema": "BannedUser",
+      "description": "Banned users blocked from publishing"
     }
   }
 }

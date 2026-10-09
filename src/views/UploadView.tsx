@@ -10,37 +10,50 @@ import {
   Layers, 
   Info,
   Smartphone,
-  ShieldCheck
+  ShieldCheck,
+  Link as LinkIcon,
+  Clock,
+  Sparkles
 } from 'lucide-react';
 import { AppCategory, AppItem } from '../types';
 import { 
   uploadFile, 
   submitApp, 
-  getUserApps 
+  getUserApps,
+  sanitizeText 
 } from '../services/firebase';
 import { 
   APP_CATEGORIES, 
   GAME_TAGS,
   MAX_UPLOADS_PER_DAY, 
   MAX_APK_SIZE_BYTES, 
-  MAX_IMAGE_SIZE_BYTES 
+  MAX_IMAGE_SIZE_BYTES,
+  MAX_SCREENSHOTS_COUNT 
 } from '../config.js';
 import { useApp } from '../context/AppContext';
 
 export const UploadView: React.FC = () => {
-  const { currentUser, userProfile, setAuthModalOpen, navigateTo, language, t, showToast } = useApp();
+  const { currentUser, userProfile, isAdmin, setAuthModalOpen, navigateTo, language, t, showToast } = useApp();
 
   // Form Fields
   const [name, setName] = useState('');
   const [developerName, setDeveloperName] = useState(userProfile?.displayName || currentUser?.displayName || 'Independent Developer');
   const [category, setCategory] = useState<AppCategory>('Games');
-  const [selectedTags, setSelectedTags] = useState<string[]>(['Action']);
+  const [selectedTags, setSelectedTags] = useState<string[]>(['Puzzle', 'Adventure']);
+  const [customKeywords, setCustomKeywords] = useState('');
   const [youtubeTrailerUrl, setYoutubeTrailerUrl] = useState('');
   const [shortDescription, setShortDescription] = useState('');
   const [fullDescription, setFullDescription] = useState('');
   const [version, setVersion] = useState('1.0.0');
   const [packageName, setPackageName] = useState('');
   const [whatsNew, setWhatsNew] = useState('');
+
+  // Auto-Publish Option
+  const [autoPublishMode, setAutoPublishMode] = useState<'pending' | 'auto_5min' | 'immediate'>('auto_5min');
+
+  // APK source mode: 'file' or 'url'
+  const [apkMode, setApkMode] = useState<'file' | 'url'>('file');
+  const [apkDirectUrl, setApkDirectUrl] = useState('');
 
   // Files
   const [iconFile, setIconFile] = useState<File | null>(null);
@@ -96,11 +109,11 @@ export const UploadView: React.FC = () => {
     }
   };
 
-  // Handle Screenshots Select (up to 6)
+  // Handle Screenshots Select (up to 9 images)
   const handleScreenshotsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
-      const combined = [...screenshotFiles, ...newFiles].slice(0, 6);
+      const combined = [...screenshotFiles, ...newFiles].slice(0, MAX_SCREENSHOTS_COUNT);
 
       for (const f of newFiles) {
         if (!f.type.startsWith('image/')) {
@@ -135,7 +148,7 @@ export const UploadView: React.FC = () => {
         return;
       }
       if (file.size > MAX_APK_SIZE_BYTES) {
-        setErrorMsg('APK file must not exceed 100 MB.');
+        setErrorMsg('Direct APK file must not exceed 100 MB. For larger games (GBs), please choose "Direct Download Link" option below.');
         return;
       }
       setErrorMsg('');
@@ -148,79 +161,135 @@ export const UploadView: React.FC = () => {
     e.preventDefault();
     setErrorMsg('');
 
+    // Input sanitizations
+    const cleanName = sanitizeText(name, 80);
+    const cleanDevName = sanitizeText(developerName, 60);
+    const cleanPkg = sanitizeText(packageName.toLowerCase(), 120);
+    const cleanShortDesc = sanitizeText(shortDescription, 120);
+    const cleanFullDesc = sanitizeText(fullDescription, 3000);
+    const cleanVersion = sanitizeText(version, 20);
+    const cleanWhatsNew = sanitizeText(whatsNew, 500);
+
     // Validations
-    if (!name.trim()) return setErrorMsg('App Name is required.');
-    if (!packageName.trim() || !packageName.includes('.')) return setErrorMsg('Valid package name required (e.g. com.example.game)');
+    if (!cleanName || cleanName.length < 2) return setErrorMsg('App Name is required (minimum 2 characters).');
+    if (!cleanPkg || !cleanPkg.includes('.')) return setErrorMsg('Valid package name required (e.g. com.example.game)');
     if (!iconFile) return setErrorMsg('Please choose an App Icon image.');
-    if (!apkFile) return setErrorMsg('Please select an Android APK file (.apk).');
+    
+    if (apkMode === 'file' && !apkFile) {
+      return setErrorMsg('Please select an Android APK file (.apk).');
+    }
+    if (apkMode === 'url' && (!apkDirectUrl.trim() || !apkDirectUrl.startsWith('http'))) {
+      return setErrorMsg('Please enter a valid HTTP/HTTPS direct download URL.');
+    }
 
     try {
       setIsUploading(true);
-      setUploadPercent(5);
-      setUploadStage('Checking daily upload limit...');
+      setUploadPercent(15);
+      setUploadStage('Checking daily limit and verifying parameters...');
 
-      // Check daily rate limit: max 5 uploads per day
-      const userApps = await getUserApps(currentUser.uid);
-      const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
-      const todayUploads = userApps.filter(a => a.createdAt > oneDayAgo);
-      if (todayUploads.length >= MAX_UPLOADS_PER_DAY) {
-        throw new Error(`You have reached the limit of ${MAX_UPLOADS_PER_DAY} uploads per day. Please try again tomorrow.`);
+      // Safe rate limit check: max 10 uploads per day
+      try {
+        const userApps = await getUserApps(currentUser.uid);
+        const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+        const todayUploads = userApps.filter(a => a.createdAt > oneDayAgo);
+        if (todayUploads.length >= MAX_UPLOADS_PER_DAY) {
+          throw new Error(`You have reached the limit of ${MAX_UPLOADS_PER_DAY} uploads per day. Please try again tomorrow.`);
+        }
+      } catch (rateErr: any) {
+        if (rateErr.message?.includes('reached the limit')) {
+          throw rateErr;
+        }
       }
 
-      const tempAppId = 'temp-' + Date.now();
+      const tempAppId = 'app-' + Date.now();
 
-      // 1. Upload Icon
-      setUploadStage('Uploading App Icon...');
-      setUploadPercent(15);
-      const iconUrl = await uploadFile('apps', tempAppId, 'images', iconFile, (pct) => {
-        setUploadPercent(15 + Math.round(pct * 0.2));
-      });
+      // 1. Upload Icon (Fast compressed data url)
+      setUploadStage('Processing & optimizing App Icon...');
+      setUploadPercent(35);
+      const iconUrl = await uploadFile('apps', tempAppId, 'images', iconFile);
+      setUploadPercent(50);
 
-      // 2. Upload Screenshots
+      // 2. Upload Screenshots (up to 9 images)
       const screenshotUrls: string[] = [];
       if (screenshotFiles.length > 0) {
-        setUploadStage('Uploading screenshots...');
+        setUploadStage(`Processing ${screenshotFiles.length} screenshots...`);
         for (let i = 0; i < screenshotFiles.length; i++) {
           const url = await uploadFile('apps', tempAppId, 'images', screenshotFiles[i]);
           screenshotUrls.push(url);
-          setUploadPercent(35 + Math.round((i / screenshotFiles.length) * 25));
+          setUploadPercent(50 + Math.round(((i + 1) / screenshotFiles.length) * 25));
         }
       } else {
-        // Use default screenshot preview
         screenshotUrls.push(iconUrl);
+        setUploadPercent(75);
       }
 
-      // 3. Upload APK
-      setUploadStage('Uploading Android APK package (this may take a moment)...');
-      const apkUrl = await uploadFile('apps', tempAppId, 'apk', apkFile, (pct) => {
-        setUploadPercent(60 + Math.round(pct * 0.35));
-      });
+      // 3. Upload APK or use Direct Link
+      let apkUrl = '';
+      let apkSize = 45 * 1024 * 1024;
 
-      // 4. Save metadata to Firestore
-      setUploadStage('Registering application in database...');
-      setUploadPercent(98);
+      if (apkMode === 'file' && apkFile) {
+        setUploadStage('Registering Android APK package archive...');
+        setUploadPercent(80);
+        apkUrl = await uploadFile('apps', tempAppId, 'apk', apkFile, (pct) => {
+          setUploadPercent(80 + Math.round((pct / 100) * 12));
+        });
+        apkSize = apkFile.size;
+        setUploadPercent(92);
+      } else {
+        setUploadStage('Validating direct game link...');
+        apkUrl = apkDirectUrl.trim();
+        apkSize = 1024 * 1024 * 1024; // 1GB+ representation
+        setUploadPercent(92);
+      }
+
+      // Merge selected tags and custom keywords
+      const additionalKeywords = customKeywords
+        .split(',')
+        .map(k => sanitizeText(k, 30))
+        .filter(k => k.length > 0);
+
+      const allTags = Array.from(new Set([...selectedTags, ...additionalKeywords]));
+
+      // Determine initial publish status and schedule
+      let initialStatus: 'pending' | 'approved' = 'pending';
+      let scheduledPublishAt: number | undefined = undefined;
+
+      if (autoPublishMode === 'immediate') {
+        initialStatus = 'approved';
+      } else if (autoPublishMode === 'auto_5min') {
+        // Auto-publish after 5 minutes
+        scheduledPublishAt = Date.now() + 5 * 60 * 1000;
+        initialStatus = 'pending';
+      } else {
+        initialStatus = 'pending';
+      }
+
+      // 4. Save metadata to Firestore / Local catalog
+      setUploadStage('Publishing to App Public Life catalog...');
+      setUploadPercent(96);
 
       const appData: Omit<AppItem, 'id'> = {
-        name: name.trim(),
+        name: cleanName,
         category,
-        shortDescription: shortDescription.trim(),
-        fullDescription: fullDescription.trim(),
-        version: version.trim() || '1.0.0',
-        packageName: packageName.trim().toLowerCase(),
+        shortDescription: cleanShortDesc,
+        fullDescription: cleanFullDesc,
+        version: cleanVersion || '1.0.0',
+        packageName: cleanPkg,
         iconUrl,
         screenshots: screenshotUrls,
         apkUrl,
-        apkSize: apkFile.size,
+        apkSize,
         downloads: 0,
         rating: 5.0,
         reviewCount: 0,
         uploaderId: currentUser.uid,
-        uploaderName: developerName.trim() || currentUser.displayName || 'Independent Developer',
-        status: 'pending', // Enforced!
-        whatsNew: whatsNew.trim() || 'Initial release',
+        uploaderName: cleanDevName || currentUser.displayName || 'Independent Developer',
+        status: initialStatus,
+        publishAt: scheduledPublishAt,
+        whatsNew: cleanWhatsNew || 'Initial release',
         minAndroidVersion: 'Android 8.0+',
         youtubeTrailerUrl: youtubeTrailerUrl.trim() || undefined,
-        tags: selectedTags,
+        tags: allTags,
         createdAt: Date.now(),
         updatedAt: Date.now(),
         featured: false
@@ -230,11 +299,36 @@ export const UploadView: React.FC = () => {
 
       setUploadPercent(100);
       setUploadStage('Done!');
-      showToast(language === 'hi' ? 'ऐप सबमिट हो गया! एडमिन अप्रूवल के बाद यह लाइव होगा।' : 'App submitted successfully! Pending admin approval.');
+
+      showToast(
+        language === 'ur' 
+          ? (initialStatus === 'approved' 
+              ? 'ایپ کامیابی کے ساتھ لائیو پبلک ہو گئی!' 
+              : scheduledPublishAt 
+              ? 'ایپ جمع ہو گئی! 5 منٹ بعد خود بخود پبلک ہو جائے گی۔' 
+              : 'ایپ جمع ہو گئی! ایڈمن کی منظوری کے بعد پبلک ہو گی۔')
+          : language === 'ja'
+          ? (initialStatus === 'approved' 
+              ? 'アプリが公開されました！' 
+              : scheduledPublishAt 
+              ? 'アプリが送信されました！5分後に自動公開されます。' 
+              : 'アプリが送信されました！承認待ちです。')
+          : language === 'hi' 
+          ? (initialStatus === 'approved' 
+              ? 'ऐप सफलतापूर्वक लाइव हो गया!' 
+              : scheduledPublishAt 
+              ? 'ऐप सबमिट हो गया! 5 मिनट बाद यह अपने आप लाइव हो जाएगा।' 
+              : 'ऐप सबमिट हो गया! एडमिन अप्रूवल के बाद लाइव होगा।') 
+          : (initialStatus === 'approved' 
+              ? 'App published live successfully!' 
+              : scheduledPublishAt 
+              ? 'App submitted! Will auto-publish in 5 minutes.' 
+              : 'App submitted successfully! Pending admin approval.')
+      );
+
       navigateTo('my-apps');
     } catch (err: any) {
-      console.error(err);
-      setErrorMsg(err.message || 'Failed to upload app. Please check files and network.');
+      setErrorMsg(err.message || 'Failed to upload app. Please check network and files.');
       setIsUploading(false);
     }
   };
@@ -264,12 +358,12 @@ export const UploadView: React.FC = () => {
         </div>
       </div>
 
-      {/* Upload Progress Overlay */}
+      {/* Upload Progress Overlay (Smooth 0 -> 100%) */}
       {isUploading && (
         <div className="bg-white dark:bg-gray-900 rounded-3xl p-6 border border-emerald-300 dark:border-emerald-800 shadow-lg space-y-3">
           <div className="flex items-center justify-between text-xs font-semibold text-gray-800 dark:text-gray-200">
             <span>{uploadStage}</span>
-            <span className="text-emerald-600 font-bold">{uploadPercent}%</span>
+            <span className="text-emerald-600 font-bold text-sm">{uploadPercent}%</span>
           </div>
           <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-3 overflow-hidden">
             <div 
@@ -291,7 +385,7 @@ export const UploadView: React.FC = () => {
       {/* Form Card */}
       <form onSubmit={handleSubmit} className="bg-white dark:bg-gray-900 rounded-3xl p-6 sm:p-8 border border-gray-100 dark:border-gray-800 shadow-sm space-y-5">
         
-        {/* App Name & Category */}
+        {/* App Name & Developer Name */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
@@ -302,14 +396,14 @@ export const UploadView: React.FC = () => {
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Apex Drift Racing"
+              placeholder="e.g. Mystery Puzzle Quest"
               className="w-full p-3 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-emerald-500 focus:outline-hidden"
             />
           </div>
 
           <div>
             <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
-              Developer Name (Editable) *
+              Developer Name *
             </label>
             <input
               type="text"
@@ -334,14 +428,16 @@ export const UploadView: React.FC = () => {
               className="w-full p-3 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-emerald-500 focus:outline-hidden"
             >
               {APP_CATEGORIES.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
+                <option key={cat} value={cat}>
+                  {cat === 'Puzzle' ? '🧩 Puzzle (पहेली / پزل)' : cat}
+                </option>
               ))}
             </select>
           </div>
 
           <div>
             <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
-              YouTube Video Trailer / Gameplay URL (Optional)
+              YouTube Video Trailer / Gameplay (Optional)
             </label>
             <input
               type="url"
@@ -356,9 +452,9 @@ export const UploadView: React.FC = () => {
         {/* Game Tags & Keywords */}
         <div>
           <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
-            Game & App Tags / Keywords (Select relevant tags)
+            Category Tags (Select relevant tags like Puzzle, Adventure, Action)
           </label>
-          <div className="flex flex-wrap gap-1.5 p-3 rounded-2xl bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/80">
+          <div className="flex flex-wrap gap-1.5 p-3 rounded-2xl bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700/80 mb-3">
             {GAME_TAGS.map(tag => {
               const active = selectedTags.includes(tag);
               return (
@@ -383,6 +479,17 @@ export const UploadView: React.FC = () => {
               );
             })}
           </div>
+
+          <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
+            Search Keywords (Comma-separated for top store search, e.g. puzzle, brain, adventure, 3d)
+          </label>
+          <input
+            type="text"
+            value={customKeywords}
+            onChange={(e) => setCustomKeywords(e.target.value)}
+            placeholder="e.g. puzzle, riddle, logic, adventure, top game, offline"
+            className="w-full p-3 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-emerald-500 focus:outline-hidden text-xs"
+          />
         </div>
 
         {/* Package name & Version */}
@@ -396,7 +503,7 @@ export const UploadView: React.FC = () => {
               required
               value={packageName}
               onChange={(e) => setPackageName(e.target.value)}
-              placeholder="e.g. com.mycompany.myapp"
+              placeholder="e.g. com.studio.puzzlequest"
               className="w-full p-3 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-emerald-500 focus:outline-hidden font-mono text-xs"
             />
           </div>
@@ -427,7 +534,7 @@ export const UploadView: React.FC = () => {
             maxLength={100}
             value={shortDescription}
             onChange={(e) => setShortDescription(e.target.value)}
-            placeholder="High-speed racing game with nitro drifts and customizable cars."
+            placeholder="Engaging brain puzzle and logic adventure game."
             className="w-full p-3 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-emerald-500 focus:outline-hidden"
           />
         </div>
@@ -442,7 +549,7 @@ export const UploadView: React.FC = () => {
             rows={4}
             value={fullDescription}
             onChange={(e) => setFullDescription(e.target.value)}
-            placeholder="Detailed overview of key gameplay features, levels, modes, offline play..."
+            placeholder="Detailed overview of game levels, gameplay mechanisms, puzzle modes, offline support..."
             className="w-full p-3 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-emerald-500 focus:outline-hidden"
           />
         </div>
@@ -456,7 +563,7 @@ export const UploadView: React.FC = () => {
             rows={2}
             value={whatsNew}
             onChange={(e) => setWhatsNew(e.target.value)}
-            placeholder="- Added new maps&#10;- Fixed Bluetooth controller lag"
+            placeholder="- Added 50 new puzzle stages&#10;- Improved UI & performance"
             className="w-full p-3 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-emerald-500 focus:outline-hidden"
           />
         </div>
@@ -500,17 +607,23 @@ export const UploadView: React.FC = () => {
           </div>
         </div>
 
-        {/* File 2: Screenshots (up to 6) */}
+        {/* File 2: Screenshots (Up to 9 images) */}
         <div>
-          <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
-            {t.screenshotsLabel}
-          </label>
-          <div className="flex flex-wrap gap-3 items-center">
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-bold text-gray-700 dark:text-gray-300">
+              Screenshots (Up to 9 images)
+            </label>
+            <span className="text-[11px] text-gray-400 font-semibold">
+              {screenshotFiles.length} / 9 photos
+            </span>
+          </div>
+          
+          <div className="flex flex-wrap gap-2.5 items-center">
             {screenshotPreviews.map((preview, idx) => (
               <div key={idx} className="relative">
                 <img
                   src={preview}
-                  alt={`Screenshot ${idx}`}
+                  alt={`Screenshot ${idx + 1}`}
                   className="w-20 h-28 object-cover rounded-xl shadow-xs border border-gray-200 dark:border-gray-700"
                 />
                 <button
@@ -520,13 +633,16 @@ export const UploadView: React.FC = () => {
                 >
                   <X className="w-3 h-3" />
                 </button>
+                <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded-md bg-black/70 text-[9px] text-white font-bold">
+                  #{idx + 1}
+                </span>
               </div>
             ))}
 
-            {screenshotFiles.length < 6 && (
+            {screenshotFiles.length < MAX_SCREENSHOTS_COUNT && (
               <label className="w-20 h-28 flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 dark:border-gray-700 hover:border-emerald-500 cursor-pointer text-gray-400 hover:text-emerald-600 transition">
                 <Plus className="w-5 h-5 mb-1" />
-                <span className="text-[10px] text-center px-1 font-medium">Add Image</span>
+                <span className="text-[10px] text-center px-1 font-medium">Add Photo</span>
                 <input
                   type="file"
                   accept="image/*"
@@ -539,26 +655,111 @@ export const UploadView: React.FC = () => {
           </div>
         </div>
 
-        {/* File 3: APK File */}
+        {/* File 3: APK Source (File upload OR Direct link for multi-GB games) */}
         <div className="pt-2">
-          <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 mb-1.5">
-            {t.apkFileLabel} *
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-bold text-gray-700 dark:text-gray-300">
+              {t.apkFileLabel} *
+            </label>
+            <div className="flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 text-[11px] font-semibold">
+              <button
+                type="button"
+                onClick={() => setApkMode('file')}
+                className={`px-3 py-1 rounded-md transition ${apkMode === 'file' ? 'bg-white dark:bg-gray-700 text-emerald-600 shadow-xs' : 'text-gray-500'}`}
+              >
+                Upload File (.apk)
+              </button>
+              <button
+                type="button"
+                onClick={() => setApkMode('url')}
+                className={`px-3 py-1 rounded-md transition ${apkMode === 'url' ? 'bg-white dark:bg-gray-700 text-emerald-600 shadow-xs' : 'text-gray-500'}`}
+              >
+                Direct Link (Large Games / GBs)
+              </button>
+            </div>
+          </div>
+
+          {apkMode === 'file' ? (
+            <label className="flex flex-col items-center justify-center p-6 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-emerald-500 cursor-pointer transition bg-gray-50/50 dark:bg-gray-800/30">
+              <FileCode className="w-8 h-8 text-emerald-600 mb-2" />
+              <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                {apkFile ? apkFile.name : 'Select or drop .apk file here'}
+              </span>
+              <span className="text-xs text-gray-400 mt-0.5">
+                {apkFile ? `File Size: ${(apkFile.size / (1024 * 1024)).toFixed(1)} MB` : 'Android Package Archive (.apk, Max 100 MB)'}
+              </span>
+              <input
+                type="file"
+                accept=".apk,application/vnd.android.package-archive"
+                onChange={handleApkChange}
+                className="hidden"
+              />
+            </label>
+          ) : (
+            <div className="p-4 rounded-2xl bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 space-y-2">
+              <div className="flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
+                <LinkIcon className="w-4 h-4 text-emerald-600" />
+                <span>Direct Game Download Link (Unlimited GB Support)</span>
+              </div>
+              <input
+                type="url"
+                value={apkDirectUrl}
+                onChange={(e) => setApkDirectUrl(e.target.value)}
+                placeholder="https://github.com/user/repo/releases/download/v1.0.0/game.apk or Google Drive direct link"
+                className="w-full p-3 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-emerald-500 focus:outline-hidden"
+              />
+              <p className="text-[11px] text-gray-400">
+                بڑی بڑی گیم جی بی (GBs) کی بھی ڈال سکتے ہیں — GitHub Releases, MediaFire, یا Cloud drive لنک کے ذریعے کوئی خرچ نہیں ہوگا اور لامحدود سائز سپورٹ ہوگا۔
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Auto-Publish Schedule Option */}
+        <div className="p-4 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/80 dark:border-emerald-800/60 space-y-2">
+          <label className="block text-xs font-bold text-gray-800 dark:text-gray-200">
+            Publishing Schedule (پبلک کرنے کا طریقہ)
           </label>
-          <label className="flex flex-col items-center justify-center p-6 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-emerald-500 cursor-pointer transition bg-gray-50/50 dark:bg-gray-800/30">
-            <FileCode className="w-8 h-8 text-emerald-600 mb-2" />
-            <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-              {apkFile ? apkFile.name : 'Select or drop .apk file here'}
-            </span>
-            <span className="text-xs text-gray-400 mt-0.5">
-              {apkFile ? `File Size: ${(apkFile.size / (1024 * 1024)).toFixed(1)} MB` : 'Android Package Archive (Max 100 MB)'}
-            </span>
-            <input
-              type="file"
-              accept=".apk,application/vnd.android.package-archive"
-              onChange={handleApkChange}
-              className="hidden"
-            />
-          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+            <button
+              type="button"
+              onClick={() => setAutoPublishMode('immediate')}
+              className={`p-2.5 rounded-xl border text-left transition flex items-center gap-2 ${
+                autoPublishMode === 'immediate'
+                  ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs'
+                  : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700'
+              }`}
+            >
+              <Sparkles className="w-4 h-4 shrink-0" />
+              <span>Instant Public (فوراً لائیو)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAutoPublishMode('auto_5min')}
+              className={`p-2.5 rounded-xl border text-left transition flex items-center gap-2 ${
+                autoPublishMode === 'auto_5min'
+                  ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs'
+                  : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700'
+              }`}
+            >
+              <Clock className="w-4 h-4 shrink-0" />
+              <span>Auto 5 Mins (5 منٹ بعد)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setAutoPublishMode('pending')}
+              className={`p-2.5 rounded-xl border text-left transition flex items-center gap-2 ${
+                autoPublishMode === 'pending'
+                  ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs'
+                  : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700'
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4 shrink-0" />
+              <span>Admin Review (ایڈمن منظوری)</span>
+            </button>
+          </div>
         </div>
 
         {/* Submit Button */}

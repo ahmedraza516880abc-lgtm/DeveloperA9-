@@ -6,7 +6,15 @@ import {
   GraduationCap, 
   MessageCircle, 
   Tv, 
-  Sparkles 
+  Sparkles,
+  Puzzle,
+  Compass,
+  Swords,
+  Car,
+  Crown,
+  Shield,
+  Cpu,
+  Trophy
 } from 'lucide-react';
 import { AppCategory } from '../types';
 import { APP_CATEGORIES } from '../config.js';
@@ -14,11 +22,27 @@ import { useApp } from '../context/AppContext';
 
 const CATEGORY_ICONS: Record<string, React.ElementType> = {
   Games: Gamepad2,
+  Puzzle: Puzzle,
+  Adventure: Compass,
+  Action: Swords,
+  Racing: Car,
+  Strategy: Crown,
+  RPG: Shield,
+  Simulation: Cpu,
+  Arcade: Gamepad2,
+  Sports: Trophy,
+  Casual: Sparkles,
   Apps: Smartphone,
   Tools: Wrench,
   Education: GraduationCap,
   Social: MessageCircle,
-  Entertainment: Tv
+  Entertainment: Tv,
+  'Board & Card': Gamepad2,
+  'Trivia & Word': Sparkles,
+  'Horror & Mystery': Compass,
+  'Survival & Craft': Swords,
+  Productivity: Wrench,
+  Personalization: Sparkles
 };
 
 export const CategoryChips: React.FC = () => {
@@ -37,13 +61,18 @@ export const CategoryChips: React.FC = () => {
           }`}
         >
           <Sparkles className="w-3.5 h-3.5" />
-          <span>{language === 'hi' ? 'सभी ऐप्स' : 'For You'}</span>
+          <span>
+            {language === 'ur' ? 'تمام ایپس' :
+             language === 'ja' ? 'すべて' :
+             language === 'hi' ? 'सभी ऐप्स' :
+             language === 'ar' ? 'الكل' : 'For You'}
+          </span>
         </button>
 
         {APP_CATEGORIES.map((cat) => {
           const Icon = CATEGORY_ICONS[cat] || Smartphone;
           const isSelected = selectedCategory === cat;
-          const label = t.categories[cat as AppCategory] || cat;
+          const label = t.categories?.[cat as AppCategory] || cat;
 
           return (
             <button

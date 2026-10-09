@@ -12,7 +12,9 @@ import {
   Users, 
   Clock,
   ExternalLink,
-  ChevronRight
+  ChevronRight,
+  RotateCcw,
+  Sparkles
 } from 'lucide-react';
 import { AppItem, ReportItem } from '../types';
 import { 
@@ -22,7 +24,9 @@ import {
   getReports, 
   dismissReport, 
   banUser,
-  getApprovedApps 
+  getApprovedApps,
+  clearAllLocalData,
+  loadSamplePreviewData
 } from '../services/firebase';
 import { useApp } from '../context/AppContext';
 import { formatDownloads, formatSize } from '../components/AppCard';
@@ -45,28 +49,27 @@ export const AdminPanelView: React.FC = () => {
   // Active admin tab
   const [adminTab, setAdminTab] = useState<'pending' | 'reports' | 'all'>('pending');
 
+  const reloadData = async () => {
+    try {
+      setLoading(true);
+      const [pending, reps, approved] = await Promise.all([
+        getPendingApps(),
+        getReports(),
+        getApprovedApps()
+      ]);
+      setPendingApps(pending);
+      setReports(reps);
+      setAllApps([...approved, ...pending]);
+    } catch (err) {
+      console.error("Error loading admin data:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!isAdmin) return;
-
-    const loadAdminData = async () => {
-      try {
-        setLoading(true);
-        const [pending, reps, approved] = await Promise.all([
-          getPendingApps(),
-          getReports(),
-          getApprovedApps()
-        ]);
-        setPendingApps(pending);
-        setReports(reps);
-        setAllApps([...approved, ...pending]);
-      } catch (err) {
-        console.error("Error loading admin data:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadAdminData();
+    reloadData();
   }, [isAdmin]);
 
   // Guard: Admin check
@@ -95,6 +98,7 @@ export const AdminPanelView: React.FC = () => {
     try {
       await setAppStatus(appId, 'approved');
       setPendingApps(prev => prev.filter(a => a.id !== appId));
+      setAllApps(prev => prev.map(a => a.id === appId ? { ...a, status: 'approved' } : a));
       showToast(language === 'hi' ? 'ऐप स्वीकृत किया गया और स्टोर में लाइव है!' : 'App approved and published live to the store!');
     } catch (err: any) {
       showToast(err.message || 'Error approving app', 'error');
@@ -109,6 +113,7 @@ export const AdminPanelView: React.FC = () => {
     try {
       await setAppStatus(rejectingAppId, 'rejected', rejectionReasonInput.trim() || 'Did not meet store safety or content guidelines.');
       setPendingApps(prev => prev.filter(a => a.id !== rejectingAppId));
+      setAllApps(prev => prev.map(a => a.id === rejectingAppId ? { ...a, status: 'rejected' } : a));
       setRejectingAppId(null);
       setRejectionReasonInput('');
       showToast(language === 'hi' ? 'ऐप अस्वीकृत कर दिया गया।' : 'App rejected and developer notified.');
@@ -151,6 +156,19 @@ export const AdminPanelView: React.FC = () => {
     }
   };
 
+  // Reset/Clear local data
+  const handleClearLocalData = () => {
+    clearAllLocalData();
+    reloadData();
+    showToast('Local test storage cleared. Store reset to zero apps.', 'info');
+  };
+
+  const handleLoadSamplePreview = () => {
+    loadSamplePreviewData();
+    reloadData();
+    showToast('Loaded 1 sample adventure app for preview.', 'success');
+  };
+
   // Store Overview Metrics
   const totalAppsCount = allApps.length;
   const totalDownloads = allApps.reduce((acc, c) => acc + (c.downloads || 0), 0);
@@ -177,9 +195,25 @@ export const AdminPanelView: React.FC = () => {
             </div>
           </div>
 
-          <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 self-start sm:self-center">
-            Super Administrator
-          </span>
+          <div className="flex items-center gap-2 self-start sm:self-center">
+            <button
+              onClick={handleClearLocalData}
+              title="Wipe local mock data to verify completely clean store"
+              className="px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-700 text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition flex items-center gap-1"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset Clean</span>
+            </button>
+
+            <button
+              onClick={handleLoadSamplePreview}
+              title="Load 1 sample game for testing"
+              className="px-3 py-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition flex items-center gap-1"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Sample App</span>
+            </button>
+          </div>
         </div>
 
         {/* Global Stats Overview */}
@@ -292,6 +326,15 @@ export const AdminPanelView: React.FC = () => {
                     <p className="text-xs text-gray-600 dark:text-gray-300 mt-2 line-clamp-2 max-w-xl">
                       {app.shortDescription}
                     </p>
+                    {app.tags && app.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {app.tags.map(t => (
+                          <span key={t} className="px-2 py-0.5 rounded-full text-[10px] bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                            #{t}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -341,7 +384,7 @@ export const AdminPanelView: React.FC = () => {
         <div className="space-y-4">
           {reports.length === 0 ? (
             <div className="p-12 text-center rounded-3xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 text-gray-500 text-sm">
-              No reports reported by users.
+              No reports submitted by users.
             </div>
           ) : (
             reports.map(rep => (
@@ -373,7 +416,7 @@ export const AdminPanelView: React.FC = () => {
                     className="px-3 py-1.5 rounded-xl border border-rose-300 text-rose-700 dark:text-rose-400 text-xs font-semibold hover:bg-rose-50 dark:hover:bg-rose-950/50 flex items-center gap-1"
                   >
                     <UserX className="w-3.5 h-3.5" />
-                    <span>Ban Reporter / User</span>
+                    <span>Ban User</span>
                   </button>
 
                   <button
@@ -408,7 +451,7 @@ export const AdminPanelView: React.FC = () => {
                     {app.name}
                   </h4>
                   <p className="text-xs text-gray-400">
-                    {app.category} • {formatDownloads(app.downloads)} downloads • status: {app.status}
+                    {app.category} • {formatDownloads(app.downloads)} downloads • status: <span className={app.status === 'approved' ? 'text-emerald-500 font-semibold' : 'text-amber-500'}>{app.status}</span>
                   </p>
                 </div>
               </div>
@@ -416,7 +459,7 @@ export const AdminPanelView: React.FC = () => {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => navigateTo('app-detail', { appId: app.id })}
-                  className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                  className="px-3 py-1.5 text-xs font-semibold rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200"
                 >
                   View Page
                 </button>

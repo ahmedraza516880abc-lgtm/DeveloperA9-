@@ -80,7 +80,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Language state
   const [language, setLanguageState] = useState<Language>(() => {
     const saved = localStorage.getItem('droidstore_lang') as Language;
-    return saved === 'hi' ? 'hi' : 'en';
+    const validLangs: Language[] = ['en', 'ur', 'hi', 'ja', 'ar', 'es', 'fr', 'de', 'ru', 'zh', 'pt', 'tr', 'it', 'ko', 'id', 'bn', 'pa', 'fa', 'vi', 'th'];
+    if (saved && validLangs.includes(saved)) return saved;
+    return 'ur'; // default to Urdu
   });
 
   // Navigation
